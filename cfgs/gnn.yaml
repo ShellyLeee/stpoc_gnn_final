@@ -1,0 +1,149 @@
+# ============================================================
+# STP Open Challenge - Final Submission Configuration
+# ------------------------------------------------------------
+# This configuration corresponds to the BEST leaderboard result
+# reported in our submission.
+#
+# ============================================================
+
+data:
+  train_rna_h5ad: "data/train_rna.h5ad"
+  train_pro_h5ad: "data/train_pro.h5ad"
+  test_rna_h5ad: "data/valid_rna.h5ad"
+  final_test_rna_h5ad: "data/test_rna.h5ad"
+
+  # ---- Cell abundance (cell2location) ----
+  use_cell_features: true
+  cell_features_dir: "data/bio_info/"
+  # Only use mean (Plan A)
+  cell_abundance_mean_train: "cell2location_predicted_cell_abundance_mean_train.csv"
+  cell_abundance_mean_test:  "cell2location_predicted_cell_abundance_mean_valid.csv"
+  cell_abundance_mean_test_final:  "cell2location_predicted_cell_abundance_mean_test.csv"
+  save_cell_scaler: true
+
+  # ---- H&E Image ----
+  use_he_features: true
+  # H&E Image related paths
+  he_image_path: "data/HE_image_full_resolution.tif"
+  test_he_image_path: "data/test_HE_image_full_resolution.tif"
+  # H&E encoder name (for feature extraction)
+  he_encoder_name: "resnet50"
+  auto_suffix_modelname: true
+  # Feature extraction script outputs here; training script reads from here
+  he_features_save_path: "data/extracted_features/he_features_robust_all.npy" 
+  test_he_features_path: "data/extracted_features/test_he_features_robust_all.npy"
+  # Path to the model pretrained weights for image feature extraction
+  pretrained_path: "data/pretrained_models/resnet50-0676ba61.pth"
+  
+  # Image patching parameters (must match the extraction script)
+  patch_size: 224
+  
+  grid_h: 419
+  grid_w: 419
+  split_ratio: 0.9
+
+preprocessing:
+  reduction_method: "mlp"
+  k_pca: 2048
+  apply_qc_filtering: false
+  normalize_rna: true
+  zscore_protein: true
+  
+  mlp_reducer:
+    use_all_rna: true
+    save_best: true
+    # ckpt_path: /your/custom/path/mlp_reducer_best.pt  # optional
+    hidden_dim: null
+    num_layers: 3
+    dropout: 0.1
+    use_batchnorm: true
+    num_epochs: 50
+    batch_size: 512
+    learning_rate: 0.001
+
+# Graph Construction Parameters
+graph:
+  radius: 3.5  
+  max_neighbors: 20
+  use_edge_attr: true
+  self_loops: true
+  use: true
+  batch_size_nodes: 4096
+  fanout: [10, 10]
+  build_batch_size: 10000
+  cache_graph: true
+
+# Model Architecture
+model:
+  # --- Architecture Backbones ---
+  conv_type: "GAT"
+  num_layers: 2            
+  hidden_channels: 160
+  pooling_type: "none"
+  
+  # --- Key Tricks Configuration ---
+  skip_type: "none"
+  
+  add_self_loops: true
+  norm_type: "batch"      # options: 'batch', 'group', 'layer', or 'none'
+  
+  # --- GAT Specifics ---
+  gat_heads: 4             
+  gat_concat: true
+  attention_dropout: 0.3   
+  
+  # --- Regularization ---
+  dropout: 0.3            # Feature Dropout
+  edge_dropout: 0.3       
+
+# Training Configuration
+training:
+  epochs: 100
+  learning_rate: 0.001 
+  weight_decay: 0.0001
+  num_workers: 4
+  pin_memory: true
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.0001
+  
+  # Smoothness loss (Cell Location)
+  smoothness_weight: 0.01
+  smoothness_mode: "cell_cosine"   # "edge" (old) | "cell_cosine" (new)
+  smoothness_gamma: 2.0            # 1~4
+  smoothness_threshold: 0.0        # only apply if cos > threshold
+  cell_dim: 20  
+
+  # Multimodal Training Augmentation (Core for Robustness)
+  use_modality_masking: true # Whether to enable modality masking
+  input_noise_std: 0.05 # Gaussian noise intensity
+  # Modality Dropout Probability
+  p_drop_rna: 0.2 
+  p_drop_img: 0.2
+
+loss:
+  type: "huber"
+  huber_delta: 1.0
+
+scheduler:
+  type: "cosine"
+
+fusion:
+  type: "concat_mlp"
+
+device: "cuda"
+random_seed: 42
+trainer: "baseline"
+
+logging:
+  log_dir: "./logs"
+  log_interval: 1
+  save_interval: 5
+
+# Protein Co-expression as regularizer
+coexpression:
+  enabled: true  # Set to false to disable
+  mode: kernel # Options: 'pearson', 'kernel'
+  matrix_path: "data/bio_info/protein_coexpression_matrix.txt"
+  weight: 0.05  # Weight of co-expression regularization term (tune this)
+  threshold: 0.1  # Minimum co-expression value to consider (filter noise)
+  use_matrix_version: true  # Use faster matrix-based implementation (V2)
